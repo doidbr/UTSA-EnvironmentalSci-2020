@@ -14,7 +14,7 @@ Students will be able to:
 
 •	Explore predictors for life expectancy in Texas
 
-Data Science Concepts and Skills 
+## Data Science Concepts and Skills 
 1.	Summary statistics
 2.	Exploratory data analysis; Static data visualization
 3.	Data wrangling
