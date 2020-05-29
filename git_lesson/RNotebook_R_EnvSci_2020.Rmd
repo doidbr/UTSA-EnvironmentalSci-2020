@@ -1,0 +1,799 @@
+---
+title: "UTSA Environmental Factors"
+output: 
+  pdf_document:
+    toc: true
+    toc_depth: 3
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(rvest)
+library(kableExtra)
+library(tidyverse)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(GGally)
+library(reshape)
+```
+
+\newpage
+
+# Texas Life Expectancy Data 
+
+**This analysis will model life expectancy in Texas counties based on demographic and environmental factors.** 
+
+# Exploratory Data Analysis: Demographic Data
+
+**Demographic factors in this analysis include:**
+
+```{r, echo=FALSE, results="hide"}
+
+tx_df <- read.csv('/Users/ssilva/Desktop/genAI/UTSA_env/pudf/TX-county_lfex_pudf.csv', header=TRUE)
+get_nms <- c('c_fem_lfex_c', #combined female 
+             'c_mal_lfex_c', #combined male 
+             'c_fem_lfex_h', 
+             'c_fem_lfex_b', 
+             'c_fem_lfex_w', 
+             'c_mal_lfex_h', 
+             'c_mal_lfex_b', 
+             'c_mal_lfex_w')
+
+#get missingness of each column of interest 
+missingness <- tx_df[,c('c_fem_lfex_c','c_mal_lfex_c')] %>% map(~ mean(is.na(.))) 
+#put in a nice df 
+missingness_df <- data.frame(var = names(missingness), missing = paste0((round(unlist(missingness),4))*100,"%"))
+kable(missingness_df, "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+```
+
+```{r, echo=FALSE, results="hide"}
+#collect the data where there are no missing values in the columns of interest: 
+useful_df <- tx_df[(!is.na(tx_df$c_fem_lfex_c))&(!is.na(tx_df$c_mal_lfex_c)), c('county','c_fem_lfex_c','c_mal_lfex_c')] 
+names(useful_df) <- c('County','c_fem_lfex_c','c_mal_lfex_c') #let's see what this looks like 
+#view with NA
+na_vals <- head(tx_df[,c('c_fem_lfex_c','c_mal_lfex_c')], 10)
+kable(na_vals, "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+```
+  
+```{r, echo=FALSE, results="hide"}
+#view useful data (no NA)
+#print table 
+kable(head(useful_df), "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+
+
+```
+
+```{r, echo=FALSE, results="hide"}
+url <- 'https://www.epa.gov/tx/cleanups-texas#sites' 
+#Reading the html content 
+webpage <- read_html(url)
+#create table 
+table <- html_table(webpage, fill = TRUE) 
+table <- table[[1]] 
+sf_df <- as.data.frame(table)
+
+#print table 
+kable(sf_df[1:15,], "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+
+
+```
+
+
+```{r, echo=FALSE, results="hide"}
+sf_df_c <- sf_df[,c('Superfund Site','County')]
+tx_life_data <- merge(useful_df, sf_df_c, by="County", all.x = TRUE)
+
+kable(tx_life_data[15:20,], "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+
+```
+
+
+
+```{r, echo=FALSE, results="hide"}
+
+url <- 'http://www.texascounties.net/statistics/popdensity2010.htm' 
+#Reading the html content 
+webpage <- read_html(url)
+
+#create table 
+table <- html_table(webpage, header = TRUE, fill = TRUE) 
+table <- table[[2]] 
+pop_df <- as.data.frame(table)
+
+
+#rename columns 
+names(pop_df) <- c('Rank','County', 'pop_density','pop_2010', 'Area','metro_area')
+#make population of 2010 numeric 
+pop_df$pop_2010 <- as.numeric(gsub(",", "", pop_df$pop_2010))
+#make pop_density numeric 
+pop_df$pop_density <- as.numeric(gsub(",", "", pop_df$pop_density))
+#make pop_density numeric 
+pop_df$Area <- as.numeric(gsub(",", "", pop_df$Area))
+
+pop_df <- pop_df[,2:5]
+
+kable(head(pop_df), "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+```
+
+
+
+- County: the name of the county in TX
+
+- pop_density: the population density per square mile in the specified county as recorded for 2010 by [`r kableExtra::text_spec("texaxcounties.net", color = "blue")`](http://www.texascounties.net/statistics/popdensity2010.htm)
+
+- pop_2010: the total population in the specified county as recorded for 2010 by [`r kableExtra::text_spec("texaxcounties.net", color = "blue")`](http://www.texascounties.net/statistics/popdensity2010.htm)
+
+- Area: the land area of the specified county in square miles as recorded by [`r kableExtra::text_spec("texaxcounties.net", color = "blue")`](http://www.texascounties.net/statistics/popdensity2010.htm)
+
+- num_sf: the number of superfund sites according to [`r kableExtra::text_spec("the EPA", color = "blue")`](https://www.epa.gov/tx/cleanups-texas#sites)
+
+
+- gender: a binary male / female value corresponding to the life expectancy in the specified county as recorded by [`r kableExtra::text_spec("Texas Health Maps", color = "blue")`](https://www.texashealthmaps.com/lfex)
+
+- life_exp: life expectancy in the specified county as recorded by [`r kableExtra::text_spec("Texas Health Maps", color = "blue")`](https://www.texashealthmaps.com/lfex)
+
+
+
+_sample:_
+
+```{r, message=FALSE, echo=FALSE}
+tx_full_data <- merge(tx_life_data, pop_df, by="County", all.x = TRUE)
+tx_full_data$has_sf <- 0 
+tx_full_data[!is.na(tx_full_data$`Superfund Site`),'has_sf'] <-1
+
+
+tx_full_data %>% group_by(County) %>% 
+  mutate(num_sf = sum(has_sf)) %>% 
+  ungroup() %>% 
+  gather(gender, life_exp, c_fem_lfex_c:c_mal_lfex_c) -> tx_full_data
+
+get_names <- names(tx_full_data)[!(names(tx_full_data) %in% c('Superfund Site', 'has_sf'))]
+
+
+tx_full_data %>% 
+  dplyr::select(get_names) %>% 
+  distinct() %>% arrange(County)-> tx_full_data
+
+
+tx_full_data %>% 
+  mutate(gender=dplyr::recode(tx_full_data$gender, 'c_fem_lfex_c'='female', 'c_mal_lfex_c'='male'))-> tx_full_data
+
+kable(head(tx_full_data), "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+
+```
+
+
+Distribution of life expectancy in TX:
+```{r, fig.align="center", fig.width=4, fig.height=2}
+ggplot(tx_full_data, aes(x=life_exp))+ 
+  geom_histogram(aes(y=..density..), colour="black", 
+                 fill="white", bins=30)+
+  geom_density(alpha=.2, fill="blue")+
+    ggtitle("Density of life expectancy in TX counties")+
+    xlab("Life expectancy (years)") + 
+    ylab("Density")+
+    theme(plot.title = element_text(hjust = 0.5))
+
+```
+Does the data appear bimodal? What might cause this?
+
+\newpage
+
+### Knowledge Check
+
+Evaluate the following pair plot to better understand demographics . 
+
+```{r}
+#pairs(tx_full_data[,c(2:5,7)])
+
+ggpairs(tx_full_data, columns = c(2:5,7), 
+        upper = list(continuous = wrap("cor", size = 2.4)),
+        ggplot2::aes(colour=gender))+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   color = "black",
+                                   size = 8))
+
+```
+
+### Knowledge Check
+
+- Which variable(s) differ by gender?
+
+  - `r kableExtra::text_spec("life expectancy", color = "red")`
+
+- What can you infer about each variable's distribution? 
+
+  - `r kableExtra::text_spec("Most of the variables are right-skewed. For example, most of the counties' populations are small, and a small number of counties have large numbers of people.", color = "red")`
+
+- What relationships do you see between variables? Do any variables have a strong linear correlation with life expectancy?
+
+  - `r kableExtra::text_spec("We see a strong linear correlation between population and population density. This tells us the data might be redundant, and we may want to choose just one to be in the model.", color = "red")`
+
+  - `r kableExtra::text_spec("No other variables have a strong linear correlation with life expectancy. As a data scientist, we might see this and consider either transforming the data, or using an approach other than linear regression.", color = "red")`
+
+- Do you see any outliers? 
+
+  - `r kableExtra::text_spec("There seems to be a data point indicating 15 superfund sites in one county.", color = "red")`
+
+
+\newpage
+
+We see one county with many superfund sites. Which county is this?
+
+```{r}
+#find the county 
+t1 <- tx_full_data[tx_full_data$num_sf==15,]
+t1 <- as.data.frame(t1)
+
+kable(t1, "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+```
+
+We see that the outlier with 15 superfund sites is Harris County, the county containing Houston, TX.
+
+
+This seems like a relatively high number of superfund sites. What type of life expectancy would you expect relative to other counties? 
+
+
+----
+
+Now explore these plots about the relationships between superfund sites, gender, and life expectancy.
+
+```{r}
+tx_full_data %>% 
+  select(num_sf, life_exp, gender) %>%
+  mutate(num_sf = as.factor(num_sf)) %>%
+  group_by(num_sf) %>%
+  ggplot(aes(x=num_sf, y=life_exp))+
+    geom_boxplot()+
+    geom_jitter(alpha=.5, aes(colour=gender))+ 
+    ggtitle("Life expectancy in a given TX county \nby number of superfund sites")+
+    xlab("Number of superfund sites \nin the county") + ylab("Life expectancy in the county")+
+    theme(plot.title = element_text(hjust = 0.5))
+    
+
+
+```
+
+```{r, fig.align="center", fig.width=4, fig.height=2}
+ggplot(tx_full_data, 
+       aes(x=life_exp, fill=gender))+
+  geom_density(alpha=.5)+ 
+    ggtitle("Density of life expectancy in TX counties")+
+    xlab("Life expectancy") + 
+    ylab("Density")+
+    theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+### Knowledge Check
+
+- Does it seem that counties with more superfund sites are associated with lower life expectancy?
+
+  - `r kableExtra::text_spec("We don't see a big difference in median life expectancy across superfund sites. In fact, the highest median values for life expectancy are from counties with 3 superfund sites and one county (Harris) with 15 superfund sites. We should also keep in mind that there are fewer samples in the groups with more superfund sites, and look at qualitative sources or do hypothesis testing with cities outside of Houston to be more sure.", color = "red")`
+
+- Does gender seem to have an affect on life expectancy? 
+
+  - `r kableExtra::text_spec("Yes! There is a bimodal distribution due to gender difference. Females are expected to live longer across TX counties.", color = "red")`
+
+
+\newpage
+Let's take a look at counties with the best and worst life expectancy.
+
+### Counties with the _highest_ life expectancy:
+
+For females:
+```{r}
+tx_full_data %>% 
+  filter(gender=="female") %>% mutate(rank = dense_rank(desc(life_exp))) %>%
+  arrange(rank) -> f_tx_ranked_data
+
+kable(f_tx_ranked_data[1:6,], "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+```
+
+For males:
+```{r}
+tx_full_data %>% 
+  filter(gender=="male") %>% mutate(rank = dense_rank(desc(life_exp))) %>%
+  arrange(rank) -> m_tx_ranked_data
+
+kable(m_tx_ranked_data[1:6,], "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+
+```
+
+### Counties with the _lowest_ life expectancy:
+
+For females:
+```{r}
+
+f_tx_ranked_data %>%
+  top_n(-6, wt = life_exp) %>%
+  kable("latex", booktabs=T)%>% 
+    row_spec(0,bold=TRUE) %>% 
+    kable_styling("striped", full_width = FALSE)
+```
+
+For males:
+```{r}
+m_tx_ranked_data %>%
+  top_n(-6, wt = life_exp)%>%
+  kable("latex", booktabs=T)%>% 
+    row_spec(0,bold=TRUE) %>% 
+    kable_styling("striped", full_width = FALSE)
+
+```
+
+
+```{r}
+tx_full_data %>% 
+  mutate(rank = dense_rank(desc(life_exp))) %>%
+  arrange(rank) -> tx_ranked_data
+
+```
+
+\newpage
+
+## Data transformation
+
+Recall that there was not a strong correlation between any of the variables with life expectancy. To get a better linear regression model, we'll try transforming the data to look at the log of population instead of the population itself:
+```{r, fig.align="center", fig.width=6, fig.height=3}
+ggplot(tx_full_data, 
+       aes(y=life_exp, x=log(pop_2010), color=gender))+
+  geom_jitter(alpha=.5)
+
+```
+
+Since this looks much more linear, we'll use these variables.
+```{r}
+tx_full_data$log_pop <- log(tx_full_data$pop_2010)
+tx_full_data$log_popden <- log(tx_full_data$pop_density)
+
+tx_full_data %>%
+  mutate(num_sf=as.numeric(num_sf),
+         gender=as.factor(gender)) -> tx_full_data
+
+
+bonus <- tx_full_data[,c('County', 'log_pop','Area','num_sf',
+                                 'gender','life_exp')]
+
+tx_reg_data <- tx_full_data[,c('log_pop','Area','num_sf',
+                                 'gender','life_exp')]
+
+kable(head(tx_reg_data), "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+
+```
+
+\newpage
+
+# Modeling demographic data with linear regression
+
+Now that we have a better understanding of the data, we'll create a simple initial model:
+```{r, echo=TRUE }
+reg1 <- lm(data= tx_reg_data, life_exp ~ .) 
+summary(reg1)
+```
+
+
+
+### Knowledge Check
+
+- Which variable(s) are significant to the model?
+
+  - `r kableExtra::text_spec("We see a definite significant effect of the transformed population variable, number of superfund sites, and gender on life expectancy. We see a slightly lesser, but still evident effect of Area on life expectancy.", color = "red")`
+
+- What is the R Squared value of the model?
+
+  - `r kableExtra::text_spec("71%", color = "red")`
+
+- Given a male and female live in the same county in TX, how much longer would you expect the female to live than the male, according to this model?
+
+  - `r kableExtra::text_spec("roughly 5.6 years, as the coefficient for gendermale is -5.58 (years of life expectancy).", color = "red")`
+
+
+
+----------
+
+\newpage
+
+# Exploratory data analysis: Environmental Factors
+
+Let's consider environmental factors.
+
+```{r, include = FALSE}
+epa <-read.csv("/Users/ssilva/Desktop/genAI/UTSA_env/tri_2005_tx.csv", header=TRUE)
+
+x <- gsub("\\.\\.","_", names(epa))
+names(epa) <- gsub("\\.","_",x)
+
+kable(names(epa)[1:20], "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+```
+
+
+
+```{r}
+
+# standardize the county names to prep for merging later
+tx_full_data$County <- tolower(as.character(tx_full_data$County))
+epa$County <- tolower(as.character(epa$X7_COUNTY))
+
+tx_life_data <- merge(tx_full_data, epa, by="County", all.x = TRUE, all.y = FALSE)
+
+```
+
+
+Here we will look at:
+
+- life_exp: life expectancy in the specified county as recorded by [`r kableExtra::text_spec("Texas Health Maps", color = "blue")`](https://www.texashealthmaps.com/lfex)
+
+- tot_RCRA: total quantity of chemicals released, reported on or off site, to RCRA Subtitle C landfills or surface impoundments as recorded by [`r kableExtra::text_spec("2004 EPA Data", color = "blue")`](https://www.epa.gov/toxics-release-inventory-tri-program/tri-basic-data-files-calendar-years-1987-2018)
+
+- cleanair_nond_tot: total quantity (reported in pounds) of non-dioxin chemicals covered by the Clean Air Act that were released in a given county via fugitive air, stack air, water, underground, landfill, land treatment, or surface impoundment, as recorded by [`r kableExtra::text_spec("2004 EPA Data", color = "blue")`](https://www.epa.gov/toxics-release-inventory-tri-program/tri-basic-data-files-calendar-years-1987-2018).
+
+- carc_nond_tot: total quantity (reported in pounds) of non-dioxin carcinogens that were released in a given county via fugitive air, stack air, water, underground, landfill, land treatment, or surface impoundment, as recorded by [`r kableExtra::text_spec("2004 EPA Data", color = "blue")`](https://www.epa.gov/toxics-release-inventory-tri-program/tri-basic-data-files-calendar-years-1987-2018).
+
+- carc_d_tot: total quantity (reported in grams) of dioxin and dioxin-like compounds that were released in a given county via fugitive air, stack air, water, underground, landfill, land treatment, or surface impoundment, as recorded by [`r kableExtra::text_spec("2004 EPA Data", color = "blue")`](https://www.epa.gov/toxics-release-inventory-tri-program/tri-basic-data-files-calendar-years-1987-2018).
+
+
+```{r}
+
+tx_life_data %>%
+  select(County, pop_density, pop_2010, Area, num_sf, gender,
+         X30_CHEMICAL, X33_CLEAN_AIR_ACT_CHEMICAL, X37_CARCINOGEN,
+         X40_5_1__FUGITIVE_AIR, X41_5_2__STACK_AIR, X42_5_3__WATER, 
+         X43_5_4__UNDERGROUND, 
+         X47_5_5_1A__RCRA_C_LANDFILL,
+         X51_5_5_3A__RCRA_SURFACE_IM,
+         X71_6_2__M65, #Total quantity of the chemical reported as:
+         #transferred off site for disposal using code M65: 
+         #“RCRA Subtitle C Landfills.”
+         X68_6_2__M66 #Total quantity of the chemical reported as:
+         #transferred off site for disposal using code M66:
+         #“RCRA Subtitle C Surface Impoundments.”
+         
+         #not including "Other Surface Impoundments" 
+         #those should not be used for RCRA metals.
+         ) -> tx_life_env_data
+  #%>% mutate(ID = 1:nrow(tx_life_data))
+
+#Need nongendered data to get county totals without duplicates
+nongender_df <- 
+  tx_life_data %>%
+  mutate(log_pop = log(pop_2010)) %>%
+    select(-gender) %>%
+    distinct()
+
+
+```
+
+```{r}
+nongender_df %>%
+  filter(X33_CLEAN_AIR_ACT_CHEMICAL=="YES", #clean air
+         X30_CHEMICAL != "DIOXIN AND DIOXIN-LIKE COMPOUNDS") %>% #not dioxin
+  select(County, X40_5_1__FUGITIVE_AIR, X41_5_2__STACK_AIR,
+         X42_5_3__WATER, X43_5_4__UNDERGROUND,
+         X44_5_4_1__UNDERGROUND_CL_I, X45_5_4_2__UNDERGROUND_C_II_V,
+         X46_5_5_1__LANDFILLS,X47_5_5_1A__RCRA_C_LANDFILL,
+         X48_5_5_1B__OTHER_LANDFILLS,X49_5_5_2__LAND_TREATMENT,
+         X50_5_5_3__SURFACE_IMPNDMNT, 
+         X51_5_5_3A__RCRA_SURFACE_IM) -> cleanair_nondioxins
+
+
+cleanair_nondioxins %>%
+  mutate(sum_cleanair = apply(cleanair_nondioxins[,2:ncol(cleanair_nondioxins)],
+      1, sum)) %>%
+  select(County, sum_cleanair) -> cleanair_nondioxins
+
+nongender_df %>%
+  filter(X33_CLEAN_AIR_ACT_CHEMICAL=="YES",  #clean air
+         X30_CHEMICAL == "DIOXIN AND DIOXIN-LIKE COMPOUNDS") %>% #is dioxin
+  select(County, X40_5_1__FUGITIVE_AIR, X41_5_2__STACK_AIR,
+         X42_5_3__WATER, X43_5_4__UNDERGROUND,
+         X44_5_4_1__UNDERGROUND_CL_I, X45_5_4_2__UNDERGROUND_C_II_V,
+         X46_5_5_1__LANDFILLS,X47_5_5_1A__RCRA_C_LANDFILL,
+         X48_5_5_1B__OTHER_LANDFILLS,X49_5_5_2__LAND_TREATMENT,
+         X50_5_5_3__SURFACE_IMPNDMNT, 
+         X51_5_5_3A__RCRA_SURFACE_IM) -> cleanair_dioxins
+
+cleanair_dioxins %>%
+  mutate(sum_cleanair = apply(cleanair_dioxins[,2:ncol(cleanair_dioxins)],
+      1, sum)) %>%
+  select(County, sum_cleanair) -> cleanair_dioxins
+
+
+```
+
+
+```{r}
+#get carcinogens, nondioxins
+nongender_df %>%
+  filter(X37_CARCINOGEN=="YES", #is carc
+         X30_CHEMICAL != "DIOXIN AND DIOXIN-LIKE COMPOUNDS") %>% #non dioxin
+  select(County, X40_5_1__FUGITIVE_AIR, X41_5_2__STACK_AIR,
+         X42_5_3__WATER, X43_5_4__UNDERGROUND,
+         X44_5_4_1__UNDERGROUND_CL_I, X45_5_4_2__UNDERGROUND_C_II_V,
+         X46_5_5_1__LANDFILLS,X47_5_5_1A__RCRA_C_LANDFILL,
+         X48_5_5_1B__OTHER_LANDFILLS,X49_5_5_2__LAND_TREATMENT,
+         X50_5_5_3__SURFACE_IMPNDMNT, 
+         X51_5_5_3A__RCRA_SURFACE_IM) -> carc_nondioxins
+
+carc_nondioxins %>%
+  mutate(sum_carc = apply(carc_nondioxins[,2:ncol(carc_nondioxins)],
+      1, sum)) %>%
+  select(County, sum_carc) -> carc_nondioxins
+
+#get carcinogens, dioxins
+nongender_df %>%
+  filter(X37_CARCINOGEN=="YES", #is carc
+         X30_CHEMICAL == "DIOXIN AND DIOXIN-LIKE COMPOUNDS") %>% #is dioxin
+  select(County, X40_5_1__FUGITIVE_AIR, X41_5_2__STACK_AIR,
+         X42_5_3__WATER, X43_5_4__UNDERGROUND,
+         X44_5_4_1__UNDERGROUND_CL_I, X45_5_4_2__UNDERGROUND_C_II_V,
+         X46_5_5_1__LANDFILLS,X47_5_5_1A__RCRA_C_LANDFILL,
+         X48_5_5_1B__OTHER_LANDFILLS,X49_5_5_2__LAND_TREATMENT,
+         X50_5_5_3__SURFACE_IMPNDMNT, 
+         X51_5_5_3A__RCRA_SURFACE_IM) -> carc_dioxins
+
+carc_dioxins %>%
+  mutate(sum_carc = apply(carc_dioxins[,2:ncol(carc_dioxins)],
+      1, sum)) %>%
+  select(County, sum_carc) -> carc_dioxins
+
+```
+
+
+
+```{r}
+
+
+nongender_df %>%
+  select(County,
+         X33_CLEAN_AIR_ACT_CHEMICAL, 
+         X37_CARCINOGEN) %>%
+  mutate(is_cleanAir_chem=
+           dplyr::recode(nongender_df$X33_CLEAN_AIR_ACT_CHEMICAL,
+                         'YES'=1,
+                         'NO'=0),
+         is_carcinogen=
+           dplyr::recode(nongender_df$X37_CARCINOGEN,
+                         'YES'=1,
+                         'NO'=0)) %>%
+  select(-X33_CLEAN_AIR_ACT_CHEMICAL) %>%
+  select(-X37_CARCINOGEN) %>%
+  group_by(County) %>%
+  mutate(num_cleanair_byCty = sum(is_cleanAir_chem),
+         num_carcinogen_byCty = sum(is_carcinogen)) %>%
+  select(County,
+         num_cleanair_byCty,
+         num_carcinogen_byCty) %>%
+  ungroup() %>%
+  distinct() %>%
+  arrange(desc(num_cleanair_byCty))-> chem_counts #count of clean air and carcinogen chemicals present by county
+
+nongender_df %>%
+  mutate(tot_chem_release = apply(nongender_df[,c('X40_5_1__FUGITIVE_AIR',
+                          'X41_5_2__STACK_AIR',
+                          'X42_5_3__WATER',
+                          'X43_5_4__UNDERGROUND')],
+                          MARGIN = 1,
+                          FUN=sum)) %>%
+  select(County, X30_CHEMICAL, tot_chem_release) %>%
+  mutate(X30_CHEMICAL=as.character(X30_CHEMICAL))%>%
+  group_by(County, X30_CHEMICAL) %>%  #316 levels + county -> should be 317 columns
+  summarise(tot_chem_release = sum(tot_chem_release)) -> chem_totals 
+  
+####
+chem_totals$X30_CHEMICAL <- as.character(chem_totals$X30_CHEMICAL)
+chem_totals_check <- chem_totals
+chem_totals %>%
+  spread(X30_CHEMICAL, tot_chem_release, fill=0) %>%
+  select(1:317) -> chem_totals #there were 318 columns because there is an "NA" column of only zeros -trailing space somewhere
+
+#CHECK angelina ACETALDEHYDE
+
+nongender_df %>%
+  mutate(tot_RCRA_release = apply(nongender_df[,c('X47_5_5_1A__RCRA_C_LANDFILL',
+                          'X51_5_5_3A__RCRA_SURFACE_IM',
+                          'X71_6_2__M65',
+                          'X68_6_2__M66')],
+                          MARGIN = 1,
+                          FUN=sum)) %>%
+  select(County, X30_CHEMICAL, tot_RCRA_release) %>%
+  group_by(County) %>%
+  summarise(tot_RCRA = sum(tot_RCRA_release)) %>%
+  arrange(desc(tot_RCRA)) -> rcra_totals #total quantity of chemicals released, reported on or off site, to RCRA Subtitle C landfills or surface impoundments
+
+```
+
+
+
+```{r}
+## Exploratory data analysis: Environmental Factors
+
+#get the original df of interest
+tx_full_data %>%
+  select(life_exp, County, pop_density, 
+         pop_2010, Area, num_sf, gender) -> tx_data_reg
+
+#group dfs
+cleanair_nondioxins %>% 
+  group_by(County) %>%
+  mutate(cleanair_nond_tot=sum(sum_cleanair)) %>%
+  select(County, cleanair_nond_tot) %>%
+  distinct() -> clean_nondioxins
+
+cleanair_dioxins %>% 
+  group_by(County) %>%
+  mutate(cleanair_d_tot=sum(sum_cleanair)) %>%
+  select(County, cleanair_d_tot) %>%
+  distinct() -> clean_dioxins
+
+carc_nondioxins %>% 
+  group_by(County) %>%
+  mutate(carc_nond_tot=sum(sum_carc)) %>%
+  select(County, carc_nond_tot) %>%
+  distinct() -> carc_nondiox
+
+carc_dioxins %>% 
+  group_by(County) %>%
+  mutate(carc_d_tot=sum(sum_carc)) %>%
+  select(County, carc_d_tot) %>%
+  distinct() -> carc_diox
+
+
+#merge all back togther
+tx_data_reg %>%
+  merge(rcra_totals, by="County", all.x = TRUE) %>%
+  merge(clean_nondioxins, by="County", all.x = TRUE) %>%
+  merge(clean_dioxins, by="County", all.x = TRUE) %>%
+  merge(carc_nondiox, by="County", all.x = TRUE) %>%
+  merge(carc_diox, by="County", all.x = TRUE) %>%
+  mutate(gender = as.factor(gender)) -> full_df
+
+full_df %>%
+  mutate(cleanair_d_tot=replace_na(full_df$cleanair_d_tot, 0))%>%
+  mutate(cleanair_nond_tot=replace_na(full_df$cleanair_nond_tot, 0))%>%
+  mutate(carc_d_tot=replace_na(full_df$carc_d_tot, 0))%>%
+  mutate(carc_nond_tot=replace_na(full_df$carc_nond_tot, 0)) -> full_df
+
+
+full_df %>%
+  select(-County) %>%
+  select(-cleanair_d_tot) %>%
+  mutate(log_pop = log(pop_2010)) -> reg_df
+
+
+
+
+```
+
+
+Our new features look like this:
+```{r}
+new_features <- c('life_exp', 'tot_RCRA', 'cleanair_nond_tot',
+                  'carc_nond_tot', 'carc_d_tot')
+
+kable(head(reg_df[,new_features]), "latex", booktabs=T)%>% 
+  row_spec(0,bold=TRUE) %>% 
+  kable_styling("striped", full_width = FALSE)
+```
+
+\newpage
+Some of the features we added include number of clean air chemicals and carcinogens being released. What is their relationship? 
+
+```{r, warning=FALSE, message=FALSE}
+
+ggpairs(reg_df, columns = c('life_exp','tot_RCRA',
+          'cleanair_nond_tot',
+          'carc_nond_tot', 'carc_d_tot'), 
+        upper = list(continuous = wrap("cor", size = 2.4)),
+        ggplot2::aes(color="cor"))+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   color = "black",
+                                   size = 8))
+
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+meltData <- melt(reg_df)
+p <- ggplot(meltData, aes(factor(variable), value)) 
+p + geom_boxplot() + facet_wrap(~variable, scale="free")+
+  xlab("variable")
+
+```
+  
+### Knowledge check
+
+- Do any variables have a strong correlation with life expectancy?
+
+  - `r kableExtra::text_spec("no, most values are near-zero and have little to no correlation with life expectancy.", color = "red")`
+
+- According to the boxplots above, do you think around the same amount of non-dioxin carcinogens (carc_nond_tot) are released to most counties? 
+
+  - `r kableExtra::text_spec("no, there seem to be just a few outliers with a lot of carcinogens, while almost no carcinogens are released in most counties.", color = "red")`
+
+
+# Modeling environmental and demographic data with linear regression
+
+```{r, echo = TRUE}
+
+reg2_df <- reg_df[,c("life_exp", 
+          "log_pop", "Area", "num_sf", "gender",
+          'tot_RCRA', 'cleanair_nond_tot',
+          'carc_nond_tot', 'carc_d_tot')] 
+
+reg2 <- lm(data = reg2_df, life_exp ~ .) 
+summary(reg2)
+
+```
+
+### Knowledge Check
+
+- Which variable(s) are significant to the model? (assume a p-value of .1)
+
+  - `r kableExtra::text_spec("We see a definite significant effect of the transformed population variable, area, number of superfund sites, and gender on life expectancy. We see a much lesser, but potentially significant effect of doxin and dioxin-like compounds on life expectancy.", color = "red")`
+
+- What is the R Squared value of the model?
+
+  - `r kableExtra::text_spec("73%", color = "red")`
+
+
+\newpage
+
+### Knowledge Check
+
+Consider Bexar County. 
+```{r}
+bonus[bonus$County=="Bexar",]
+```
+
+According to the following model, what do you predict as the life expectancy?
+
+```{r}
+summary(reg1)
+```
+
+
+Calculate:
+```{r, echo = TRUE}
+67.1428415+
+  1.1303404*14.35479+
+  0.0005190*1239.8-
+  0.4198741*3-
+  5.5857225*1 #if male
+
+67.1428415+
+  1.1303404*14.35479+
+  0.0005190*1239.8-
+  0.4198741*3 #if female
+```
+
+
+
+
+
