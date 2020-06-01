@@ -3,7 +3,9 @@
 ## Motivation and Essential Understandings
 Many researchers in Ecotoxicology need to be proficient with assessing, interpreting, and communicating information about environmental hazards and their effects on life expectancy. Of particular concern in Texas is the plethora of superfund sites. 
 
+
 •	Is age, gender, and/or population density predictors of life expectancy?
+
 •	Does living near an EPA Superfund site affect life expectancy?
 
 ## Context and Dataset
