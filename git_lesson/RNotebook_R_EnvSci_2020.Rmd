@@ -31,7 +31,7 @@ library(reshape)
 
 ```{r, echo=FALSE, results="hide"}
 
-tx_df <- read.csv('git_data/tx_county_life_data1.csv', header=TRUE)
+tx_df <- read.csv('../git_data/tx_county_life_data1.csv', header=TRUE)
 get_nms <- c('c_fem_lfex_c', #combined female 
              'c_mal_lfex_c', #combined male 
              'c_fem_lfex_h', 
@@ -423,7 +423,7 @@ summary(reg1)
 Let's consider environmental factors.
 
 ```{r, include = FALSE}
-epa <-read.csv("git_data/tx_epa_data2.csv", header=TRUE)
+epa <-read.csv("../git_data/tx_epa_data2.csv", header=TRUE)
 
 x <- gsub("\\.\\.","_", names(epa))
 names(epa) <- gsub("\\.","_",x)
